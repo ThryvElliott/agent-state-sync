@@ -2,12 +2,12 @@
   "name": "agent-state-sync",
   "version": "0.1.0",
   "description": "Local-first cross-agent state sync CLI",
-  "main": "./dist/src/index.js",
+  "main": "./dist/index.js",
   "bin": {
-    "agent-sync": "./dist/src/cli.js"
+    "agent-sync": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
