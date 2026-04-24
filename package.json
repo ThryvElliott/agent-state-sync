@@ -2,6 +2,12 @@
   "name": "agent-state-sync",
   "version": "0.1.0",
   "description": "Local-first cross-agent state sync CLI",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "main": "./dist/index.js",
   "bin": {
     "agent-sync": "./dist/cli.js"
@@ -12,7 +18,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run --coverage",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "keywords": [],
   "author": "",
