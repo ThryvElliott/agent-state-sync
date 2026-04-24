@@ -1,0 +1,179 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - synchronize
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: claude-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLAUDE_MODEL: ${{ vars.CLAUDE_REVIEW_MODEL }}
+      MODEL_LABEL: Claude Opus
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validate workflow configuration
+        run: |
+          if [ -z "${CLAUDE_MODEL}" ]; then
+            echo "Missing repository variable: CLAUDE_REVIEW_MODEL" >&2
+            exit 1
+          fi
+
+          if [ -z "${ANTHROPIC_API_KEY}" ]; then
+            echo "Missing repository secret: ANTHROPIC_API_KEY" >&2
+            exit 1
+          fi
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Generate pull request diff
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          git diff --no-ext-diff --unified=3 "origin/${{ github.base_ref }}...HEAD" > pr.diff
+
+      - name: Build Claude review prompt
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { buildPullRequestReviewPrompt } from './dist/src/review/prReview.js';
+
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const pullRequest = event.pull_request;
+          const diff = readFileSync('pr.diff', 'utf8');
+
+          const prompt = buildPullRequestReviewPrompt({
+            baseRef: pullRequest.base.ref,
+            body: pullRequest.body ?? '',
+            diff,
+            headRef: pullRequest.head.ref,
+            modelLabel: process.env.MODEL_LABEL,
+            prNumber: pullRequest.number,
+            repository: process.env.GITHUB_REPOSITORY,
+            title: pullRequest.title,
+          });
+
+          writeFileSync('review-prompt.txt', prompt);
+          EOF
+
+      - name: Request Claude review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const prompt = readFileSync('review-prompt.txt', 'utf8');
+          const payload = {
+            max_tokens: 4000,
+            model: process.env.CLAUDE_MODEL,
+            temperature: 0,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: prompt,
+                  },
+                ],
+              },
+            ],
+          };
+
+          writeFileSync('anthropic-request.json', JSON.stringify(payload));
+          EOF
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --url https://api.anthropic.com/v1/messages \
+            --header "anthropic-version: 2023-06-01" \
+            --header "content-type: application/json" \
+            --header "x-api-key: ${ANTHROPIC_API_KEY}" \
+            --data @anthropic-request.json \
+            > anthropic-response.json
+
+      - name: Format Claude review comment
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { formatReviewComment } from './dist/src/review/prReview.js';
+
+          const response = JSON.parse(readFileSync('anthropic-response.json', 'utf8'));
+          const reviewText = response.content
+            .filter((block) => block.type === 'text')
+            .map((block) => block.text)
+            .join('\n\n')
+            .trim();
+
+          writeFileSync(
+            'review-comment.md',
+            formatReviewComment(process.env.MODEL_LABEL, reviewText),
+          );
+          EOF
+
+      - name: Upsert Claude review comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODEL_MARKER: '<!-- agent-state-sync:claude-opus -->'
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" > comments.json
+
+          COMMENT_ID=$(node --input-type=module <<'EOF'
+          import { readFileSync } from 'node:fs';
+
+          const comments = JSON.parse(readFileSync('comments.json', 'utf8'));
+          const marker = process.env.MODEL_MARKER;
+          const existingComment = comments.find(
+            (comment) =>
+              comment.user?.login === 'github-actions[bot]' &&
+              typeof comment.body === 'string' &&
+              comment.body.includes(marker),
+          );
+
+          if (existingComment !== undefined) {
+            process.stdout.write(String(existingComment.id));
+          }
+          EOF
+          )
+
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              --method PATCH \
+              -f body="$(cat review-comment.md)"
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --method POST \
+              -f body="$(cat review-comment.md)"
+          fi
