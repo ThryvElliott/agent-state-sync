@@ -46,13 +46,6 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     };
   }
 
-  if (command === undefined) {
-    return {
-      args: [],
-      showHelp: true,
-    };
-  }
-
   const args = argv.slice(1);
 
   if (!isCommandName(command)) {
