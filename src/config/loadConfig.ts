@@ -106,8 +106,10 @@ function mergeConfig(
   overrideConfig: DeepPartialConfig,
 ): AgentStateSyncConfig {
   return {
-    ...baseConfig,
-    ...overrideConfig,
+    bundleRoot: overrideConfig.bundleRoot ?? baseConfig.bundleRoot,
+    canonicalRoot: overrideConfig.canonicalRoot ?? baseConfig.canonicalRoot,
+    databasePath: overrideConfig.databasePath ?? baseConfig.databasePath,
+    historyRoot: overrideConfig.historyRoot ?? baseConfig.historyRoot,
     sources: {
       claude: {
         ...baseConfig.sources.claude,
