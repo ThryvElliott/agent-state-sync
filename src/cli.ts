@@ -141,7 +141,4 @@ export async function runCliFromProcess(
   return true;
 }
 
-if (isDirectExecution(process.argv[1], import.meta.url)) {
-  const exitCode = await runCli(process.argv.slice(2));
-  process.exitCode = exitCode;
-}
+await runCliFromProcess(import.meta.url);
