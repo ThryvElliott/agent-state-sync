@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -131,8 +132,9 @@ export function loadConfig(
   const defaultConfig = getDefaultConfig(homeDir);
   const configPath =
     options.configPath ?? join(defaultConfig.canonicalRoot, 'config.json');
-  const fileExists = options.fileExists ?? (() => false);
-  const readFile = options.readFile ?? (() => '');
+  const fileExists = options.fileExists ?? existsSync;
+  const readFile =
+    options.readFile ?? ((path: string) => readFileSync(path, 'utf8'));
 
   if (!fileExists(configPath)) {
     return defaultConfig;

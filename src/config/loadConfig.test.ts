@@ -1,3 +1,7 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -81,11 +85,57 @@ describe('loadConfig', () => {
     expect(config).toEqual(getDefaultConfig(HOME));
   });
 
-  it('uses the process home directory and default file checks when no options are provided', () => {
-    const config = loadConfig();
+  it('uses default file checks when the default config path is missing', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'agent-state-sync-home-'));
 
-    expect(config.canonicalRoot).toContain('.agent-state-sync');
-    expect(config.databasePath).toContain('state.db');
+    try {
+      const config = loadConfig({
+        homeDir,
+      });
+
+      expect(config).toEqual(getDefaultConfig(homeDir));
+    } finally {
+      rmSync(homeDir, { force: true, recursive: true });
+    }
+  });
+
+  it('loads an on-disk config with the default file readers', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'agent-state-sync-home-'));
+    const configDir = join(homeDir, '.agent-state-sync');
+    const configPath = join(configDir, 'config.json');
+
+    try {
+      mkdirSync(configDir, { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          bundleRoot: '~/.agent-state-sync/custom-bundles',
+          sources: {
+            claude: {
+              enabled: false,
+            },
+          },
+        }),
+      );
+
+      const config = loadConfig({
+        homeDir,
+      });
+
+      expect(config).toEqual({
+        ...getDefaultConfig(homeDir),
+        bundleRoot: join(homeDir, '.agent-state-sync/custom-bundles'),
+        sources: {
+          ...getDefaultConfig(homeDir).sources,
+          claude: {
+            enabled: false,
+            rootPath: join(homeDir, '.claude'),
+          },
+        },
+      });
+    } finally {
+      rmSync(homeDir, { force: true, recursive: true });
+    }
   });
 
   it('merges a file config onto the defaults', () => {
@@ -136,16 +186,6 @@ describe('loadConfig', () => {
         fileExists: () => true,
         homeDir: HOME,
         readFile: () => '{invalid json',
-      }),
-    ).toThrow();
-  });
-
-  it('throws when a config file exists but no reader is supplied', () => {
-    expect(() =>
-      loadConfig({
-        configPath: '/tmp/config.json',
-        fileExists: () => true,
-        homeDir: HOME,
       }),
     ).toThrow();
   });
