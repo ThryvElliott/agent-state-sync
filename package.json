@@ -3,14 +3,21 @@
   "version": "0.1.0",
   "description": "Local-first cross-agent state sync CLI",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
     "dist"
   ],
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "agent-sync": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
