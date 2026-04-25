@@ -217,15 +217,15 @@ jobs:
       - name: Upsert Claude review comment
         env:
           GH_TOKEN: ${{ github.token }}
-          MODEL_MARKER: '<!-- agent-state-sync:claude-opus -->'
         run: |
           gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" > comments.json
 
           COMMENT_ID=$(node --input-type=module <<'EOF'
           import { readFileSync } from 'node:fs';
+          import { formatReviewMarker } from './dist/review/prReview.js';
 
           const comments = JSON.parse(readFileSync('comments.json', 'utf8'));
-          const marker = process.env.MODEL_MARKER;
+          const marker = formatReviewMarker(process.env.MODEL_LABEL);
           const existingComment = comments.find(
             (comment) =>
               comment.user?.login === 'github-actions[bot]' &&

@@ -196,7 +196,8 @@ jobs:
           import { formatReviewComment } from './dist/review/prReview.js';
 
           const response = JSON.parse(readFileSync('openai-response.json', 'utf8'));
-          const reviewText = response.choices[0]?.message?.content?.trim() ?? 'No review returned.';
+          const reviewText =
+            response.choices?.[0]?.message?.content?.trim() || 'No review returned.';
 
           writeFileSync(
             'review-comment.md',
@@ -207,15 +208,15 @@ jobs:
       - name: Upsert GPT review comment
         env:
           GH_TOKEN: ${{ github.token }}
-          MODEL_MARKER: '<!-- agent-state-sync:gpt-5.4 -->'
         run: |
           gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" > comments.json
 
           COMMENT_ID=$(node --input-type=module <<'EOF'
           import { readFileSync } from 'node:fs';
+          import { formatReviewMarker } from './dist/review/prReview.js';
 
           const comments = JSON.parse(readFileSync('comments.json', 'utf8'));
-          const marker = process.env.MODEL_MARKER;
+          const marker = formatReviewMarker(process.env.MODEL_LABEL);
           const existingComment = comments.find(
             (comment) =>
               comment.user?.login === 'github-actions[bot]' &&

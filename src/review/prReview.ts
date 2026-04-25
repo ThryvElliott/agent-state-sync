@@ -65,12 +65,16 @@ export function buildPullRequestReviewPrompt(
   ].join('\n');
 }
 
+export function formatReviewMarker(modelLabel: string) {
+  return `<!-- agent-state-sync:${modelLabel.toLowerCase().replace(/\s+/g, '-')} -->`;
+}
+
 export function formatReviewComment(
   modelLabel: string,
   reviewMarkdown: string,
 ) {
   return [
-    `<!-- agent-state-sync:${modelLabel.toLowerCase().replace(/\s+/g, '-')} -->`,
+    formatReviewMarker(modelLabel),
     `## ${modelLabel} Review`,
     '',
     reviewMarkdown.trim(),

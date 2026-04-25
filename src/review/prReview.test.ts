@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPullRequestReviewPrompt,
   formatReviewComment,
+  formatReviewMarker,
   truncateDiff,
 } from './prReview.js';
 
@@ -64,5 +65,11 @@ describe('prReview helpers', () => {
     expect(comment).toContain('<!-- agent-state-sync:gpt-5.4 -->');
     expect(comment).toContain('## GPT 5.4 Review');
     expect(comment).toContain('## Findings');
+  });
+
+  it('formats the marker from the model label', () => {
+    expect(formatReviewMarker('Claude Opus')).toBe(
+      '<!-- agent-state-sync:claude-opus -->',
+    );
   });
 });
