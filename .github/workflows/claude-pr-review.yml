@@ -192,11 +192,11 @@ jobs:
           import { formatReviewComment } from './dist/review/prReview.js';
 
           const response = JSON.parse(readFileSync('anthropic-response.json', 'utf8'));
-          const reviewText = response.content
+          const reviewText = (response.content ?? [])
             .filter((block) => block.type === 'text')
             .map((block) => block.text)
             .join('\n\n')
-            .trim();
+            .trim() || 'No review returned.';
 
           writeFileSync(
             'review-comment.md',
