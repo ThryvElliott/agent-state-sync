@@ -18,6 +18,7 @@ import {
   isThreadItemKind,
   isThreadStatus,
   type ProjectRow,
+  type SourceRecordRow,
   type ThreadRow,
 } from './canonical.js';
 
@@ -115,7 +116,21 @@ describe('canonical schema helpers', () => {
       updated_at: '2026-04-24T12:00:00.000Z',
     };
 
+    const sourceRecordRow: SourceRecordRow = {
+      id: 'source-record:1',
+      source_id: 'source:claude-home',
+      canonical_table: 'threads',
+      canonical_id: 'thread:marketing-center:phase-1',
+      source_type: 'state-file',
+      source_path: '',
+      source_key: '',
+      source_hash: null,
+      source_updated_at: null,
+      ingested_at: '2026-04-24T12:00:00.000Z',
+    };
+
     expect(projectRow.slug).toBe('marketing-center');
     expect(threadRow.status).toBe('active');
+    expect(sourceRecordRow.source_path).toBe('');
   });
 });

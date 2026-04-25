@@ -175,8 +175,8 @@ export interface SourceRecordRow {
   canonical_table: string;
   canonical_id: string;
   source_type: string;
-  source_path: string | null;
-  source_key: string | null;
+  source_path: string;
+  source_key: string;
   source_hash: string | null;
   source_updated_at: string | null;
   ingested_at: string;
