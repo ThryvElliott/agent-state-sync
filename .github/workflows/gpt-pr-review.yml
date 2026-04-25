@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -110,13 +110,31 @@ jobs:
           writeFileSync('openai-request.json', JSON.stringify(payload));
           EOF
 
-          curl --fail --silent --show-error \
-            --request POST \
-            --url https://api.openai.com/v1/chat/completions \
-            --header "Authorization: Bearer ${OPENAI_API_KEY}" \
-            --header "content-type: application/json" \
-            --data @openai-request.json \
-            > openai-response.json
+          for attempt in 1 2 3; do
+            HTTP_STATUS=$(curl --silent --show-error \
+              --request POST \
+              --url https://api.openai.com/v1/chat/completions \
+              --header "Authorization: Bearer ${OPENAI_API_KEY}" \
+              --header "content-type: application/json" \
+              --data @openai-request.json \
+              --output openai-response.json \
+              --write-out "%{http_code}")
+
+            if [ "${HTTP_STATUS}" = "200" ]; then
+              break
+            fi
+
+            if [ "${HTTP_STATUS}" = "429" ] || [ "${HTTP_STATUS}" = "500" ] || [ "${HTTP_STATUS}" = "502" ] || [ "${HTTP_STATUS}" = "503" ] || [ "${HTTP_STATUS}" = "504" ]; then
+              if [ "${attempt}" -lt 3 ]; then
+                sleep $((attempt * 5))
+                continue
+              fi
+            fi
+
+            echo "OpenAI API request failed with status ${HTTP_STATUS}" >&2
+            cat openai-response.json >&2
+            exit 1
+          done
 
       - name: Format GPT review comment
         run: |

@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -99,7 +99,6 @@ jobs:
           const payload = {
             max_tokens: 4000,
             model: process.env.CLAUDE_MODEL,
-            temperature: 0,
             messages: [
               {
                 role: 'user',
@@ -116,14 +115,32 @@ jobs:
           writeFileSync('anthropic-request.json', JSON.stringify(payload));
           EOF
 
-          curl --fail --silent --show-error \
-            --request POST \
-            --url https://api.anthropic.com/v1/messages \
-            --header "anthropic-version: 2023-06-01" \
-            --header "content-type: application/json" \
-            --header "x-api-key: ${ANTHROPIC_API_KEY}" \
-            --data @anthropic-request.json \
-            > anthropic-response.json
+          for attempt in 1 2 3; do
+            HTTP_STATUS=$(curl --silent --show-error \
+              --request POST \
+              --url https://api.anthropic.com/v1/messages \
+              --header "anthropic-version: 2023-06-01" \
+              --header "content-type: application/json" \
+              --header "x-api-key: ${ANTHROPIC_API_KEY}" \
+              --data @anthropic-request.json \
+              --output anthropic-response.json \
+              --write-out "%{http_code}")
+
+            if [ "${HTTP_STATUS}" = "200" ]; then
+              break
+            fi
+
+            if [ "${HTTP_STATUS}" = "429" ] || [ "${HTTP_STATUS}" = "500" ] || [ "${HTTP_STATUS}" = "502" ] || [ "${HTTP_STATUS}" = "503" ] || [ "${HTTP_STATUS}" = "504" ]; then
+              if [ "${attempt}" -lt 3 ]; then
+                sleep $((attempt * 5))
+                continue
+              fi
+            fi
+
+            echo "Anthropic API request failed with status ${HTTP_STATUS}" >&2
+            cat anthropic-response.json >&2
+            exit 1
+          done
 
       - name: Format Claude review comment
         run: |
