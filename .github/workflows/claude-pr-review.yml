@@ -209,7 +209,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MODEL_MARKER: '<!-- agent-state-sync:claude-opus -->'
         run: |
-          gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" > comments.json
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" > comments.json
 
           COMMENT_ID=$(node --input-type=module <<'EOF'
           import { readFileSync } from 'node:fs';
