@@ -45,12 +45,12 @@ jobs:
             `head_ref=${pullRequest.head.ref}`,
             `head_sha=${pullRequest.head.sha}`,
             `pr_number=${pullRequest.number}`,
-            'body<<EOF',
+            'body<<AGENT_SYNC_DELIM',
             pullRequest.body ?? '',
-            'EOF',
-            'title<<EOF',
+            'AGENT_SYNC_DELIM',
+            'title<<AGENT_SYNC_DELIM',
             pullRequest.title,
-            'EOF',
+            'AGENT_SYNC_DELIM',
           ];
 
           appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
