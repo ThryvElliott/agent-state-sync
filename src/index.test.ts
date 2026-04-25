@@ -6,7 +6,6 @@ describe('index exports', () => {
   it('re-exports the phase 1 public API surface', () => {
     expect(agentStateSync.openAgentStateDb).toBeTypeOf('function');
     expect(agentStateSync.loadConfig).toBeTypeOf('function');
-    expect(agentStateSync.parseCliArgs).toBeTypeOf('function');
     expect(agentStateSync.buildPullRequestReviewPrompt).toBeTypeOf('function');
     expect(agentStateSync.isThreadStatus).toBeTypeOf('function');
   });
