@@ -28,7 +28,10 @@ export interface LoadConfigOptions {
 type DeepPartialConfig = Partial<
   Omit<AgentStateSyncConfig, 'sources'> & {
     sources: Partial<
-      Record<keyof AgentStateSyncConfig['sources'], Partial<AgentStateSourceConfig>>
+      Record<
+        keyof AgentStateSyncConfig['sources'],
+        Partial<AgentStateSourceConfig>
+      >
     >;
   }
 >;

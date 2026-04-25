@@ -39,7 +39,12 @@ export function isCommandName(value: string): value is CommandName {
 export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const command = argv[0];
 
-  if (argv.length === 0 || command === undefined || command === '--help' || command === '-h') {
+  if (
+    argv.length === 0 ||
+    command === undefined ||
+    command === '--help' ||
+    command === '-h'
+  ) {
     return {
       args: [],
       showHelp: true,
