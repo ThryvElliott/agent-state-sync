@@ -99,9 +99,11 @@ jobs:
         run: npm run build
 
       - name: Generate pull request diff
+        env:
+          PR_BASE_REF: ${{ steps.pr_context.outputs.base_ref }}
         run: |
-          git fetch origin "${{ steps.pr_context.outputs.base_ref }}" --depth=1
-          git diff --no-ext-diff --unified=3 "origin/${{ steps.pr_context.outputs.base_ref }}...HEAD" > pr.diff
+          git fetch origin "${PR_BASE_REF}" --depth=1
+          git diff --no-ext-diff --unified=3 "origin/${PR_BASE_REF}...HEAD" > pr.diff
 
       - name: Build GPT review prompt
         run: |
