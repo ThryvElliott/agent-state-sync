@@ -1111,6 +1111,23 @@ describe('openAgentStateDb', () => {
       ).toThrow();
     });
 
+    it('rejects duplicate source record mappings with empty source locators', () => {
+      insertSource(db);
+      insertSourceRecord(db, {
+        source_key: '',
+        source_path: '',
+      });
+
+      expect(() =>
+        insertSourceRecord(db, {
+          id: 'source-record:duplicate',
+          source_hash: 'def456',
+          source_key: '',
+          source_path: '',
+        }),
+      ).toThrow();
+    });
+
     it('cascades delete from sources to source records', () => {
       insertSource(db);
       insertSourceRecord(db);

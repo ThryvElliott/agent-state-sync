@@ -37,23 +37,31 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > pull-request.json
 
           node --input-type=module <<'EOF'
+          import { randomUUID } from 'node:crypto';
           import { appendFileSync, readFileSync } from 'node:fs';
 
           const pullRequest = JSON.parse(readFileSync('pull-request.json', 'utf8'));
-          const lines = [
-            `base_ref=${pullRequest.base.ref}`,
-            `head_ref=${pullRequest.head.ref}`,
-            `head_sha=${pullRequest.head.sha}`,
-            `pr_number=${pullRequest.number}`,
-            'body<<AGENT_SYNC_DELIM',
-            pullRequest.body ?? '',
-            'AGENT_SYNC_DELIM',
-            'title<<AGENT_SYNC_DELIM',
-            pullRequest.title,
-            'AGENT_SYNC_DELIM',
-          ];
 
-          appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
+          function appendOutput(name, value) {
+            const text = String(value ?? '');
+            let delimiter;
+
+            do {
+              delimiter = `AGENT_SYNC_${randomUUID()}`;
+            } while (text.split('\n').includes(delimiter));
+
+            appendFileSync(
+              process.env.GITHUB_OUTPUT,
+              `${name}<<${delimiter}\n${text}\n${delimiter}\n`,
+            );
+          }
+
+          appendOutput('base_ref', pullRequest.base.ref);
+          appendOutput('head_ref', pullRequest.head.ref);
+          appendOutput('head_sha', pullRequest.head.sha);
+          appendOutput('pr_number', pullRequest.number);
+          appendOutput('body', pullRequest.body);
+          appendOutput('title', pullRequest.title);
           EOF
 
       - name: Check out repository

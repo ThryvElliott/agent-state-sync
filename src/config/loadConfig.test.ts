@@ -146,6 +146,7 @@ describe('loadConfig', () => {
       readFile: () =>
         JSON.stringify({
           bundleRoot: '~/.agent-state-sync/custom-bundles',
+          unexpected: 'ignored',
           sources: {
             codex: {
               enabled: false,
@@ -177,6 +178,7 @@ describe('loadConfig', () => {
         },
       },
     });
+    expect(config).not.toHaveProperty('unexpected');
   });
 
   it('throws when the config file contains invalid JSON', () => {
