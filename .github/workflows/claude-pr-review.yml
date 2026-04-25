@@ -2,12 +2,12 @@ name: Claude code review
 run-name: Claude code review
 
 on:
-  pull_request:
-    types:
-      - opened
-      - reopened
-      - ready_for_review
-      - synchronize
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -15,23 +15,52 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: claude-pr-review-${{ github.event.pull_request.number }}
+  group: claude-pr-review-${{ inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   review:
-    if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
+      ALLOWED_ACTOR: ${{ vars.AI_REVIEW_ALLOWED_ACTOR }}
       CLAUDE_MODEL: ${{ vars.CLAUDE_REVIEW_MODEL }}
       MODEL_LABEL: Claude Opus
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ inputs.pr_number }}
+      REQUESTED_BY: ${{ github.triggering_actor || github.actor }}
     steps:
+      - name: Resolve pull request context
+        id: pr_context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > pull-request.json
+
+          node --input-type=module <<'EOF'
+          import { appendFileSync, readFileSync } from 'node:fs';
+
+          const pullRequest = JSON.parse(readFileSync('pull-request.json', 'utf8'));
+          const lines = [
+            `base_ref=${pullRequest.base.ref}`,
+            `head_ref=${pullRequest.head.ref}`,
+            `head_sha=${pullRequest.head.sha}`,
+            `pr_number=${pullRequest.number}`,
+            'body<<EOF',
+            pullRequest.body ?? '',
+            'EOF',
+            'title<<EOF',
+            pullRequest.title,
+            'EOF',
+          ];
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
+          EOF
+
       - name: Check out repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ steps.pr_context.outputs.head_sha }}
 
       - name: Set up Node
         uses: actions/setup-node@v5
@@ -41,6 +70,11 @@ jobs:
 
       - name: Validate workflow configuration
         run: |
+          if [ -z "${ALLOWED_ACTOR}" ]; then
+            echo "Missing repository variable: AI_REVIEW_ALLOWED_ACTOR" >&2
+            exit 1
+          fi
+
           if [ -z "${CLAUDE_MODEL}" ]; then
             echo "Missing repository variable: CLAUDE_REVIEW_MODEL" >&2
             exit 1
@@ -48,6 +82,11 @@ jobs:
 
           if [ -z "${ANTHROPIC_API_KEY}" ]; then
             echo "Missing repository secret: ANTHROPIC_API_KEY" >&2
+            exit 1
+          fi
+
+          if [ "${REQUESTED_BY}" != "${ALLOWED_ACTOR}" ]; then
+            echo "Claude review dispatch is restricted to ${ALLOWED_ACTOR}; received ${REQUESTED_BY}." >&2
             exit 1
           fi
         env:
@@ -61,8 +100,8 @@ jobs:
 
       - name: Generate pull request diff
         run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          git diff --no-ext-diff --unified=3 "origin/${{ github.base_ref }}...HEAD" > pr.diff
+          git fetch origin "${{ steps.pr_context.outputs.base_ref }}" --depth=1
+          git diff --no-ext-diff --unified=3 "origin/${{ steps.pr_context.outputs.base_ref }}...HEAD" > pr.diff
 
       - name: Build Claude review prompt
         run: |
@@ -70,23 +109,27 @@ jobs:
           import { readFileSync, writeFileSync } from 'node:fs';
           import { buildPullRequestReviewPrompt } from './dist/review/prReview.js';
 
-          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-          const pullRequest = event.pull_request;
           const diff = readFileSync('pr.diff', 'utf8');
 
           const prompt = buildPullRequestReviewPrompt({
-            baseRef: pullRequest.base.ref,
-            body: pullRequest.body ?? '',
+            baseRef: process.env.PR_BASE_REF,
+            body: process.env.PR_BODY ?? '',
             diff,
-            headRef: pullRequest.head.ref,
+            headRef: process.env.PR_HEAD_REF,
             modelLabel: process.env.MODEL_LABEL,
-            prNumber: pullRequest.number,
+            prNumber: Number(process.env.PR_NUMBER),
             repository: process.env.GITHUB_REPOSITORY,
-            title: pullRequest.title,
+            title: process.env.PR_TITLE,
           });
 
           writeFileSync('review-prompt.txt', prompt);
           EOF
+        env:
+          PR_BASE_REF: ${{ steps.pr_context.outputs.base_ref }}
+          PR_BODY: ${{ steps.pr_context.outputs.body }}
+          PR_HEAD_REF: ${{ steps.pr_context.outputs.head_ref }}
+          PR_NUMBER: ${{ steps.pr_context.outputs.pr_number }}
+          PR_TITLE: ${{ steps.pr_context.outputs.title }}
 
       - name: Request Claude review
         env:
