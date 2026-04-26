@@ -1,0 +1,52 @@
+{
+  "name": "agent-state-sync",
+  "version": "0.1.0",
+  "description": "Local-first cross-agent state sync CLI",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "agent-sync": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "^12.9.0"
+  },
+  "devDependencies": {
+    "@emnapi/core": "^1.10.0",
+    "@emnapi/runtime": "^1.10.0",
+    "@eslint/js": "^10.0.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.0",
+    "vitest": "^4.1.5"
+  }
+}

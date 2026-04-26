@@ -1,0 +1,250 @@
+name: Claude code review
+run-name: Claude code review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: claude-pr-review-${{ inputs.pr_number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ALLOWED_ACTOR: ${{ vars.AI_REVIEW_ALLOWED_ACTOR }}
+      CLAUDE_MODEL: ${{ vars.CLAUDE_REVIEW_MODEL }}
+      MODEL_LABEL: Claude Opus
+      PR_NUMBER: ${{ inputs.pr_number }}
+      REQUESTED_BY: ${{ github.triggering_actor || github.actor }}
+    steps:
+      - name: Resolve pull request context
+        id: pr_context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > pull-request.json
+
+          node --input-type=module <<'EOF'
+          import { randomUUID } from 'node:crypto';
+          import { appendFileSync, readFileSync } from 'node:fs';
+
+          const pullRequest = JSON.parse(readFileSync('pull-request.json', 'utf8'));
+
+          function appendOutput(name, value) {
+            const text = String(value ?? '');
+            let delimiter;
+
+            do {
+              delimiter = `AGENT_SYNC_${randomUUID()}`;
+            } while (text.split('\n').includes(delimiter));
+
+            appendFileSync(
+              process.env.GITHUB_OUTPUT,
+              `${name}<<${delimiter}\n${text}\n${delimiter}\n`,
+            );
+          }
+
+          appendOutput('base_ref', pullRequest.base.ref);
+          appendOutput('head_ref', pullRequest.head.ref);
+          appendOutput('head_sha', pullRequest.head.sha);
+          appendOutput('pr_number', pullRequest.number);
+          appendOutput('body', pullRequest.body);
+          appendOutput('title', pullRequest.title);
+          EOF
+
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.pr_context.outputs.head_sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validate workflow configuration
+        run: |
+          if [ -z "${ALLOWED_ACTOR}" ]; then
+            echo "Missing repository variable: AI_REVIEW_ALLOWED_ACTOR" >&2
+            exit 1
+          fi
+
+          if [ -z "${CLAUDE_MODEL}" ]; then
+            echo "Missing repository variable: CLAUDE_REVIEW_MODEL" >&2
+            exit 1
+          fi
+
+          if [ -z "${ANTHROPIC_API_KEY}" ]; then
+            echo "Missing repository secret: ANTHROPIC_API_KEY" >&2
+            exit 1
+          fi
+
+          if [ "${REQUESTED_BY}" != "${ALLOWED_ACTOR}" ]; then
+            echo "Claude review dispatch is restricted to ${ALLOWED_ACTOR}; received ${REQUESTED_BY}." >&2
+            exit 1
+          fi
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Generate pull request diff
+        env:
+          PR_BASE_REF: ${{ steps.pr_context.outputs.base_ref }}
+        run: |
+          git fetch origin "${PR_BASE_REF}" --depth=1
+          git diff --no-ext-diff --unified=3 "origin/${PR_BASE_REF}...HEAD" > pr.diff
+
+      - name: Build Claude review prompt
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { buildPullRequestReviewPrompt } from './dist/review/prReview.js';
+
+          const diff = readFileSync('pr.diff', 'utf8');
+
+          const prompt = buildPullRequestReviewPrompt({
+            baseRef: process.env.PR_BASE_REF,
+            body: process.env.PR_BODY ?? '',
+            diff,
+            headRef: process.env.PR_HEAD_REF,
+            modelLabel: process.env.MODEL_LABEL,
+            prNumber: Number(process.env.PR_NUMBER),
+            repository: process.env.GITHUB_REPOSITORY,
+            title: process.env.PR_TITLE,
+          });
+
+          writeFileSync('review-prompt.txt', prompt);
+          EOF
+        env:
+          PR_BASE_REF: ${{ steps.pr_context.outputs.base_ref }}
+          PR_BODY: ${{ steps.pr_context.outputs.body }}
+          PR_HEAD_REF: ${{ steps.pr_context.outputs.head_ref }}
+          PR_NUMBER: ${{ steps.pr_context.outputs.pr_number }}
+          PR_TITLE: ${{ steps.pr_context.outputs.title }}
+
+      - name: Request Claude review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const prompt = readFileSync('review-prompt.txt', 'utf8');
+          const payload = {
+            max_tokens: 4000,
+            model: process.env.CLAUDE_MODEL,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: prompt,
+                  },
+                ],
+              },
+            ],
+          };
+
+          writeFileSync('anthropic-request.json', JSON.stringify(payload));
+          EOF
+
+          for attempt in 1 2 3; do
+            HTTP_STATUS=$(curl --silent --show-error \
+              --request POST \
+              --url https://api.anthropic.com/v1/messages \
+              --header "anthropic-version: 2023-06-01" \
+              --header "content-type: application/json" \
+              --header "x-api-key: ${ANTHROPIC_API_KEY}" \
+              --data @anthropic-request.json \
+              --output anthropic-response.json \
+              --write-out "%{http_code}")
+
+            if [ "${HTTP_STATUS}" = "200" ]; then
+              break
+            fi
+
+            if [ "${HTTP_STATUS}" = "429" ] || [ "${HTTP_STATUS}" = "500" ] || [ "${HTTP_STATUS}" = "502" ] || [ "${HTTP_STATUS}" = "503" ] || [ "${HTTP_STATUS}" = "504" ]; then
+              if [ "${attempt}" -lt 3 ]; then
+                sleep $((attempt * 5))
+                continue
+              fi
+            fi
+
+            echo "Anthropic API request failed with status ${HTTP_STATUS}" >&2
+            cat anthropic-response.json >&2
+            exit 1
+          done
+
+      - name: Format Claude review comment
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { formatReviewComment } from './dist/review/prReview.js';
+
+          const response = JSON.parse(readFileSync('anthropic-response.json', 'utf8'));
+          const reviewText = (response.content ?? [])
+            .filter((block) => block.type === 'text')
+            .map((block) => block.text)
+            .join('\n\n')
+            .trim() || 'No review returned.';
+
+          writeFileSync(
+            'review-comment.md',
+            formatReviewComment(process.env.MODEL_LABEL, reviewText),
+          );
+          EOF
+
+      - name: Upsert Claude review comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" > comments.json
+
+          COMMENT_ID=$(node --input-type=module <<'EOF'
+          import { readFileSync } from 'node:fs';
+          import { formatReviewMarker } from './dist/review/prReview.js';
+
+          const comments = JSON.parse(readFileSync('comments.json', 'utf8'));
+          const marker = formatReviewMarker(process.env.MODEL_LABEL);
+          const existingComment = comments.find(
+            (comment) =>
+              comment.user?.login === 'github-actions[bot]' &&
+              typeof comment.body === 'string' &&
+              comment.body.includes(marker),
+          );
+
+          if (existingComment !== undefined) {
+            process.stdout.write(String(existingComment.id));
+          }
+          EOF
+          )
+
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              --method PATCH \
+              -f body="$(cat review-comment.md)"
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --method POST \
+              -f body="$(cat review-comment.md)"
+          fi
