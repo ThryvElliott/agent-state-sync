@@ -67,8 +67,10 @@ export function openAgentStateDb(
       }
 
       if (version === 0) {
-        db.exec(options.schemaSql);
-        db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
+        db.transaction(() => {
+          db.exec(options.schemaSql);
+          db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
+        })();
       }
     },
 

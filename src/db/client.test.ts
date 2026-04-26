@@ -543,6 +543,24 @@ describe('openAgentStateDb', () => {
       expect(db.hasTable('projects')).toBe(true);
     });
 
+    it('rolls back schema changes when first migration fails', () => {
+      const failingDb = openAgentStateDb({
+        filename: ':memory:',
+        schemaSql: `
+          CREATE TABLE migration_probe (id TEXT PRIMARY KEY);
+          SELECT * FROM missing_table;
+        `,
+      });
+
+      try {
+        expect(() => failingDb.migrate()).toThrow();
+        expect(failingDb.hasTable('migration_probe')).toBe(false);
+        expect(failingDb.getUserVersion()).toBe(0);
+      } finally {
+        failingDb.close();
+      }
+    });
+
     it('throws when the database schema version is newer than supported', () => {
       db.setUserVersion(99);
 
