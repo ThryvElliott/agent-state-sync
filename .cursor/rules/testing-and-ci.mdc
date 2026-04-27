@@ -1,0 +1,14 @@
+---
+description: Local validation and CI expectations for agent-state-sync
+alwaysApply: true
+---
+
+# Testing And CI
+
+- Use Node.js 24 or newer.
+- Keep TypeScript strictness intact. Narrow indexed values, omit absent optional properties, use type-only imports, and include `.js` extensions for local ESM imports that run after compilation.
+- Keep tests colocated as `*.test.ts` next to source files. Prefer dependency injection over module mocking.
+- Run the smallest useful validation while iterating, then run the relevant full checks before finishing substantive code changes.
+- Standard validation commands are `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`.
+- Build before smoke-testing the CLI or changing PR-review workflows, because they import from `dist/`.
+- CI runs format, lint, typecheck, build, and unit tests. There is no deploy, release, npm publish, or artifact pipeline yet.

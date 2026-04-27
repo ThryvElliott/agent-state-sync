@@ -1,0 +1,19 @@
+---
+description: Branch, atomic commit, push, and PR safety rules for agent-state-sync
+alwaysApply: true
+---
+
+# Branch And PR Safety
+
+- Never commit or push directly to `main` or `develop`.
+- Before making repo changes, check the current branch. If it is `main` or `develop`, create a feature or fix branch first.
+- Feature branches normally target `develop`; target `main` only for an explicitly requested stable baseline promotion or emergency fix.
+- Prefer small reviewable PRs. Split unrelated work instead of bundling it into one broad branch.
+- When the user asks for commits, make each commit atomic: one coherent purpose, one reviewable behavior or documentation change, and no unrelated cleanup.
+- Stage deliberately. Do not sweep all changed files into a commit unless every staged change belongs to the same atomic purpose.
+- Keep each commit immediately understandable from its diff and its message. A human reviewer should be able to review the commit without reverse-engineering the whole branch.
+- Use Conventional Commit-style messages for every commit: `<type>(<scope>): <summary>`. Choose the type that matches the purpose, such as `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, or `ci`.
+- Write commit summaries in the imperative mood and explain the "why" in the body when the reason is not obvious from the diff.
+- Do not run destructive git commands such as `git reset --hard`, `git checkout -- <path>`, force pushes, or branch deletion unless the user explicitly approves that exact action.
+- Do not revert user changes unless the user explicitly asks. If existing changes overlap with the task, work with them and call out any conflict.
+- When responding to PR comments, only claim a fix exists after making a real commit. Include the commit link when replying that something was fixed.
