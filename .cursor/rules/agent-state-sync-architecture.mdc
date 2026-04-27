@@ -1,0 +1,15 @@
+---
+description: Product and architecture doctrine for agent-state-sync
+alwaysApply: true
+---
+
+# Agent State Sync Architecture
+
+- Treat `agent-state-sync` as the canonical reconciliation and handoff layer for cross-harness work state.
+- Optimize for portable project truth with provenance, freshness, conflict visibility, workflow policy, and deterministic handoff bundles.
+- Keep shared doctrine separate from harness-specific behavior. Cursor rules, Claude skills, Codex instructions, and future OpenViking context are projections or adapters, not the source of truth.
+- Use the local SQLite work graph as the canonical store once implemented. Human-readable Markdown remains important as an export and review format, not the only state backend.
+- Preserve source metadata for normalized records: source agent, source path, source updated time, ingest time, and enough identity to explain stale or conflicting state.
+- Prefer read-only adapters and neutral bundles before direct writes into Cursor, Claude, Codex, or other vendor-owned internal files.
+- Treat OpenViking as an optional semantic memory/context backend. Do not let it replace canonical reconciliation, governance, provenance, or handoff generation.
+- Keep human-owned project truth in `elliott-context/` unless a repo-specific plan path is explicitly established.
